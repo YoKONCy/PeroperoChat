@@ -4,7 +4,7 @@
 
 <img alt="Peroperochat" src="https://img.shields.io/badge/Python-3.10%2B-blue"> <img alt="Frontend" src="https://img.shields.io/badge/Node.js-18%2B-success"> <img alt="License" src="https://img.shields.io/badge/License-MIT-green">
 
-<p>一个友好、可配置、带长记忆与人格评估的本地 AI 伙伴。支持 Live2D 展示与 3D 模型上传。</p>
+<p>一个友好、可配置、带长记忆与人格评估的本地 AI 伙伴。支持 Live2D展示。</p>
 
 </div>
 
@@ -19,8 +19,6 @@
 Peroperochat 是一个前后端分离的开源 AI 伙伴项目：
 - 前端基于 `Vue 3 + Vite + Element Plus`，提供聊天区、模型参数设置、系统/人设提示词、提示词查看器、长记忆中心与 Live2D 展示。
 - 后端基于 `FastAPI`，提供会话、模型列表、记忆读写/维护、3D 模型上传等 REST 接口，可适配不同模型提供商。
-
-愿景：打造一个“同一位 AI 伙伴，在不同场景同享记忆”的统一陪伴体验。
 
 ## 功能亮点
 - 聊天区 Markdown 渲染、复制/编辑/重生成；支持流式与非流式回复。
@@ -131,14 +129,4 @@ Peroperochat/
   - `OPENAI_API_KEY`、`OPENAI_API_BASE`、`POST_SYSTEM_PROMPT`、`SEMANTIC_WRITE_EVERY_N`
 - 前端本地存储键：
   - `ppc.apiBase`、`ppc.apiKey`、`ppc.modelName`、`ppc.modelSettings`、`ppc.messages`、`ppc.personaProfile`、`ppc.evalWindow`、`ppc.assist.*`
-
-## 开发与部署
-- 开发：本地双端启动（见“快速开始”），前端默认自动连到 `http://localhost:8000`。如需指定，可设置 `VITE_API_BASE` 或在 UI 中配置。
-- 部署：后端使用 `uvicorn` 或容器运行；前端使用 `vite build` 输出静态资源，部署到任意静态服务器（Nginx、Netlify 等）。
-
-## TODO
-- Live2D 本地模型管理完善
-- 向量检索管线重建与记忆回注
-- 人格评估与提示词工作台增强
-- 多模型路由与提供商适配
 
