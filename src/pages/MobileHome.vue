@@ -434,10 +434,10 @@ const scheduleFutureNotification = async (id, title, body, timeStr) => {
 
 // 解析 Pero 状态标签
 function parsePeroStatus(content) {
-  if (!text) return
+  if (!content) return
   
   // 1. 解析旧版 PEROCUE
-  const perocueMatch = text.match(/<PEROCUE>([\s\S]*?)<\/PEROCUE>/)
+  const perocueMatch = content.match(/<PEROCUE>([\s\S]*?)<\/PEROCUE>/)
   if (perocueMatch) {
     try {
       const statusMap = JSON.parse(perocueMatch[1].trim())
@@ -460,7 +460,7 @@ function parsePeroStatus(content) {
 
   // 2. 解析新版 CLICK_MESSAGES
   const clickRegex = /<CLICK_MESSAGES>([\s\S]*?)<\/CLICK_MESSAGES>/
-  const clickMatch = text.match(clickRegex)
+  const clickMatch = content.match(clickRegex)
   if (clickMatch) {
     try {
       const messages = JSON.parse(clickMatch[1].trim())
@@ -489,7 +489,7 @@ function parsePeroStatus(content) {
 
   // 3. 解析 IDLE_MESSAGES
   const idleRegex = /<IDLE_MESSAGES>([\s\S]*?)<\/IDLE_MESSAGES>/
-  const idleMatch = text.match(idleRegex)
+  const idleMatch = content.match(idleRegex)
   if (idleMatch) {
     try {
       const messages = JSON.parse(idleMatch[1].trim())
@@ -517,7 +517,7 @@ function parsePeroStatus(content) {
 
   // 4. 解析 BACK_MESSAGES
   const backRegex = /<BACK_MESSAGES>([\s\S]*?)<\/BACK_MESSAGES>/
-  const backMatch = text.match(backRegex)
+  const backMatch = content.match(backRegex)
   if (backMatch) {
     try {
       const messages = JSON.parse(backMatch[1].trim())
@@ -541,7 +541,7 @@ function parsePeroStatus(content) {
   // 5. 解析 REMINDER (支持多个标签)
   const reminderRegex = /<REMINDER>([\s\S]*?)<\/REMINDER>/g
   let match
-  while ((match = reminderRegex.exec(text)) !== null) {
+  while ((match = reminderRegex.exec(content)) !== null) {
     try {
       const data = JSON.parse(match[1].trim())
       if (data.time && data.task) {
@@ -565,7 +565,7 @@ function parsePeroStatus(content) {
   // 6. 解析 TOPIC (支持多个标签)
   const topicRegex = /<TOPIC>([\s\S]*?)<\/TOPIC>/g
   let tMatch
-  while ((tMatch = topicRegex.exec(text)) !== null) {
+  while ((tMatch = topicRegex.exec(content)) !== null) {
     try {
       const data = JSON.parse(tMatch[1].trim())
       if (data.time && data.topic) {
