@@ -996,7 +996,7 @@ onMounted(() => {
   width: 140px;
   height: 200px;
   pointer-events: none;
-  z-index: 2; /* 移到时间组件 (z-index: 5) 后面 */
+  z-index: 10;
 }
 
 .reminder-bubble {
@@ -1067,7 +1067,7 @@ onMounted(() => {
   width: 140px;
   height: 200px;
   pointer-events: none;
-  z-index: 2; /* 移到时间组件 (z-index: 5) 后面 */
+  z-index: 10;
 }
 
 .topic-bubble {
