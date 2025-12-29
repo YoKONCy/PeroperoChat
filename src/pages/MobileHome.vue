@@ -10,7 +10,7 @@
           :key="t.time + t.topic"
           :class="['topic-bubble', { 'is-revealed': t.revealed }]"
           :style="getTopicBubbleStyle(idx)"
-          @click="t.revealed ? deleteTopic(idx) : toggleTopicReveal(idx)"
+          @click="toggleTopicReveal(idx)"
         >
           <div class="bubble-content">
             <template v-if="!t.revealed">
@@ -20,6 +20,9 @@
             <template v-else>
               <span class="topic-text revealed">{{ t.topic }}</span>
               <span class="time-text">{{ formatReminderTime(t.time) }}</span>
+              <div class="bubble-actions" @click.stop="deleteTopic(idx)">
+                <i class="fas fa-trash-alt remove-icon"></i>
+              </div>
             </template>
           </div>
         </div>
