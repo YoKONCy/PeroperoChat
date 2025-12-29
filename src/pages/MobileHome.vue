@@ -10,7 +10,7 @@
           :key="t.time + t.topic"
           :class="['topic-bubble', { 'is-revealed': t.revealed }]"
           :style="getTopicBubbleStyle(idx)"
-          @click="toggleTopicReveal(idx)"
+          @click="t.revealed ? deleteTopic(idx) : toggleTopicReveal(idx)"
         >
           <div class="bubble-content">
             <template v-if="!t.revealed">
@@ -20,9 +20,6 @@
             <template v-else>
               <span class="topic-text revealed">{{ t.topic }}</span>
               <span class="time-text">{{ formatReminderTime(t.time) }}</span>
-              <div class="bubble-actions">
-                <i class="fas fa-trash-alt remove-icon" @click.stop="removeTopic(idx)"></i>
-              </div>
             </template>
           </div>
         </div>
@@ -35,7 +32,7 @@
           :key="r.time + r.task"
           class="reminder-bubble"
           :style="getBubbleStyle(idx)"
-          @click="removeReminder(idx)"
+          @click="deleteReminder(idx)"
         >
           <div class="bubble-content">
             <span class="task-text">{{ r.task }}</span>
@@ -245,6 +242,38 @@ const handleWaifuClick = async () => {
   window.dispatchEvent(new CustomEvent('ppc:waifu-click'))
 }
 
+// 删除任务并取消通知
+const deleteReminder = async (idx) => {
+  const reminder = reminders.value[idx]
+  if (Capacitor.isNativePlatform() && reminder.id) {
+    try {
+      await LocalNotifications.cancel({
+        notifications: [{ id: Math.abs(reminder.id) }]
+      })
+    } catch (e) {
+      console.warn('Cancel notification failed', e)
+    }
+  }
+  reminders.value.splice(idx, 1)
+  lsSet('ppc.reminders', reminders.value)
+}
+
+// 删除话题并取消通知
+const deleteTopic = async (idx) => {
+  const topic = topics.value[idx]
+  if (Capacitor.isNativePlatform() && topic.id) {
+    try {
+      await LocalNotifications.cancel({
+        notifications: [{ id: Math.abs(topic.id) }]
+      })
+    } catch (e) {
+      console.warn('Cancel notification failed', e)
+    }
+  }
+  topics.value.splice(idx, 1)
+  lsSet('ppc.topics', topics.value)
+}
+
 // 格式化时间显示
 function formatReminderTime(timeStr) {
   try {
@@ -377,8 +406,34 @@ async function parseAndSaveMemory(text, msgTimestamp = null) {
   }
 }
 
+// 预设未来系统通知（核心：让通知在应用关闭后依然生效）
+const scheduleFutureNotification = async (id, title, body, timeStr) => {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const scheduleDate = new Date(timeStr)
+      // 如果时间还没过，就预设通知
+      if (scheduleDate > new Date()) {
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              title,
+              body,
+              id: Math.abs(id), // ID 必须是整数
+              schedule: { at: scheduleDate },
+              sound: 'beep.wav'
+            }
+          ]
+        })
+        console.log(`[Notification] 已预设未来通知: ${title} at ${timeStr}`)
+      }
+    } catch (e) {
+      console.warn('Schedule notification failed', e)
+    }
+  }
+}
+
 // 解析 Pero 状态标签
-function parsePeroStatus(text) {
+function parsePeroStatus(content) {
   if (!text) return
   
   // 1. 解析旧版 PEROCUE
@@ -493,9 +548,13 @@ function parsePeroStatus(text) {
         // 添加到提醒列表（去重）
         const exists = reminders.value.some(r => r.time === data.time && r.task === data.task)
         if (!exists) {
+          const rId = Date.now() + Math.floor(Math.random() * 1000)
+          data.id = rId
           reminders.value.push(data)
           lsSet('ppc.reminders', reminders.value)
           console.log('新提醒已添加:', data)
+          // 立即向系统预设未来通知
+          scheduleFutureNotification(rId, 'Pero 的任务提醒', data.task, data.time)
         }
       }
     } catch (e) {
@@ -513,11 +572,15 @@ function parsePeroStatus(text) {
         // 添加到话题列表（去重）
         const exists = topics.value.some(t => t.time === data.time && t.topic === data.topic)
         if (!exists) {
+          const tId = Date.now() + Math.floor(Math.random() * 1000)
+          data.id = tId
           // 初始设为不显示（秘密）
           data.revealed = false
           topics.value.push(data)
           lsSet('ppc.topics', topics.value)
           console.log('新主动话题已添加:', data)
+          // 立即向系统预设未来通知
+          scheduleFutureNotification(tId, 'Pero 想找你聊天', data.topic, data.time)
         }
       }
     } catch (e) {
