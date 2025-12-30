@@ -3,27 +3,14 @@
     <div class="hero">
       <Live2DWidget @click="handleWaifuClick" />
       
-      <!-- 话题气泡容器 (左上角) -->
+      <!-- 话题气泡容器 (左上角) - 聚合模式 -->
       <div class="topic-bubbles-container" v-if="topics.length > 0">
-        <div 
-          v-for="(t, idx) in topics" 
-          :key="t.time + t.topic"
-          :class="['topic-bubble', { 'is-revealed': t.revealed }]"
-          :style="getTopicBubbleStyle(idx)"
-          @click="toggleTopicReveal(idx)"
-        >
+        <div class="topic-aggregate-bubble" @click="showTopicList = true">
           <div class="bubble-content">
-            <template v-if="!t.revealed">
-              <i class="fas fa-user-secret secret-icon"></i>
-              <span class="topic-text">秘密...</span>
-            </template>
-            <template v-else>
-              <span class="topic-text revealed">{{ t.topic }}</span>
-              <span class="time-text">{{ formatReminderTime(t.time) }}</span>
-              <div class="bubble-actions" @click.stop="deleteTopic(idx)">
-                <i class="fas fa-trash-alt remove-icon"></i>
-              </div>
-            </template>
+            <i class="fas fa-user-secret secret-icon"></i>
+            <span class="topic-text">秘密话题</span>
+            <span v-if="topics.length > 4" class="badge">4+</span>
+            <span v-else class="badge">{{ topics.length }}</span>
           </div>
         </div>
       </div>
@@ -56,6 +43,42 @@
         <button class="tool-btn-mini" @click="openHistory"><i class="fas fa-history"></i></button>
       </div>
     </div>
+
+    <!-- 话题列表子页面 -->
+    <Transition name="fade-slide">
+      <div class="expanded-input-overlay" v-if="showTopicList" @click.self="showTopicList = false">
+        <div class="expanded-input-card topic-list-card">
+          <div class="card-header">
+            <span class="title">Pero 的秘密话题</span>
+            <button class="close-btn" @click="showTopicList = false"><i class="fas fa-times"></i></button>
+          </div>
+          
+          <div class="topic-list-content">
+            <div 
+              v-for="(t, idx) in topics" 
+              :key="t.time + t.topic"
+              :class="['topic-item', { 'is-revealed': t.revealed }]"
+              @click="toggleTopicReveal(idx)"
+            >
+              <div class="topic-item-header">
+                <div class="topic-info">
+                  <i class="fas fa-user-secret secret-icon" v-if="!t.revealed"></i>
+                  <span class="time-tag">{{ formatReminderTime(t.time) }}</span>
+                </div>
+                <button class="delete-btn" @click.stop="deleteTopic(idx)">
+                  <i class="fas fa-trash-alt"></i>
+                </button>
+              </div>
+              
+              <div class="topic-body">
+                <span v-if="!t.revealed" class="blur-text">点击揭晓秘密...</span>
+                <span v-else class="real-text">{{ t.topic }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- 展开后的全屏/半屏输入区域 -->
     <Transition name="fade-slide">
@@ -119,8 +142,16 @@ const presencePenalty = ref(0)
 const stream = ref(false)
 const memoryRounds = ref(40)
 const showHistory = ref(false)
+const showTopicList = ref(false) // 是否显示话题列表
 const chatPreview = ref(null) // 引用聊天预览区域
 const isLoading = ref(false) // 是否正在请求中
+const sessionId = ref(lsGet('ppc.sessionId', ''))
+
+// 初始化 Session ID
+if (!sessionId.value) {
+  sessionId.value = 'm-' + Math.random().toString(36).substring(2, 15)
+  lsSet('ppc.sessionId', sessionId.value)
+}
 
 // 定时提醒任务列表
 const reminders = ref(lsGet('ppc.reminders', []))
@@ -188,20 +219,54 @@ function checkReminders() {
     return // 优先处理任务
   }
 
-  // 2. 检查主动话题
-  const toTriggerTopic = topics.value.filter(t => {
-    const targetTime = new Date(t.time).getTime()
-    return now >= targetTime
+  // 检查 TOPIC (优化：支持时间簇打包触发)
+  const nowDate = new Date()
+  const triggeredTopics = []
+  
+  // 1. 找出所有已到期的话题
+  const dueIndices = []
+  topics.value.forEach((t, i) => {
+    if (new Date(t.time) <= nowDate) {
+      dueIndices.push(i)
+    }
   })
 
-  if (toTriggerTopic.length > 0) {
-    const topic = toTriggerTopic[0]
-    topics.value = topics.value.filter(t => t.time !== topic.time)
-    lsSet('ppc.topics', topics.value)
-    onSend(`【管理系统提醒：Pero，你刚才有话题想找主人聊哦，内容是：${topic.topic}；去和主人聊天吧！】`)
+  if (dueIndices.length > 0) {
+    // 2. 如果有到期的话题，进一步检查是否有其他话题在未来10分钟内
+    // 逻辑：只要有一个触发，就把所有[已过期]和[未来10分钟内]的话题全部打包
+    const tenMinsLater = new Date(nowDate.getTime() + 10 * 60 * 1000)
     
-    // 发送系统级通知 (App环境)
-    sendSystemNotification('Pero 想找你聊天', topic.topic)
+    // 重新扫描所有话题，收集要打包的
+    const bundleIndices = []
+    topics.value.forEach((t, i) => {
+      const tTime = new Date(t.time)
+      if (tTime <= tenMinsLater) {
+        bundleIndices.push(i)
+        triggeredTopics.push(t)
+      }
+    })
+    
+    // 3. 构建打包消息
+    if (triggeredTopics.length > 0) {
+      const topicListStr = triggeredTopics.map(t => `- ${t.topic} (原定: ${formatReminderTime(t.time)})`).join('\n')
+      
+      const prompt = `【管理系统提醒：Pero，以下是你之前想找主人聊的话题（已汇总）：\n${topicListStr}\n\n请将这些话题自然地融合在一起，作为一次主动的聊天开场。不要生硬地列举，要用你可爱的语气把它们串联起来！去和主人聊天吧！】`
+      
+      onSend(prompt)
+      
+      // 4. 从列表中移除已触发的话题 (倒序移除以防索引错位)
+      bundleIndices.sort((a, b) => b - a).forEach(i => {
+        // 取消系统通知（如果还没触发的话）
+        // 注意：如果已经是过去时间，通知可能已经弹出了，这里主要是清理数据
+        const tId = topics.value[i].id
+        if (tId && Capacitor.isNativePlatform()) {
+           LocalNotifications.cancel({ notifications: [{ id: tId }] }).catch(()=>{})
+        }
+        topics.value.splice(i, 1)
+      })
+      
+      lsSet('ppc.topics', topics.value)
+    }
   }
 }
 
@@ -218,8 +283,18 @@ function removeReminder(idx) {
   lsSet('ppc.reminders', reminders.value)
 }
 
-// 移除话题
-function removeTopic(idx) {
+// 删除话题并取消通知
+const deleteTopic = async (idx) => {
+  const topic = topics.value[idx]
+  if (Capacitor.isNativePlatform() && topic.id) {
+    try {
+      await LocalNotifications.cancel({
+        notifications: [{ id: Math.abs(topic.id) }]
+      })
+    } catch (e) {
+      console.warn('Cancel notification failed', e)
+    }
+  }
   topics.value.splice(idx, 1)
   lsSet('ppc.topics', topics.value)
 }
@@ -261,22 +336,6 @@ const deleteReminder = async (idx) => {
   lsSet('ppc.reminders', reminders.value)
 }
 
-// 删除话题并取消通知
-const deleteTopic = async (idx) => {
-  const topic = topics.value[idx]
-  if (Capacitor.isNativePlatform() && topic.id) {
-    try {
-      await LocalNotifications.cancel({
-        notifications: [{ id: Math.abs(topic.id) }]
-      })
-    } catch (e) {
-      console.warn('Cancel notification failed', e)
-    }
-  }
-  topics.value.splice(idx, 1)
-  lsSet('ppc.topics', topics.value)
-}
-
 // 格式化时间显示
 function formatReminderTime(timeStr) {
   try {
@@ -284,32 +343,6 @@ function formatReminderTime(timeStr) {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   } catch (e) {
     return ''
-  }
-}
-
-// 获取话题气泡样式 (左侧区域)
-function getTopicBubbleStyle(idx) {
-  const baseOffsets = [
-    { top: '10%', left: '5%' },
-    { top: '35%', left: '15%' },
-    { top: '20%', left: '40%' },
-    { top: '55%', left: '5%' },
-    { top: '70%', left: '30%' }
-  ]
-  
-  const offset = baseOffsets[idx % baseOffsets.length]
-  const jitterX = idx >= baseOffsets.length ? (Math.sin(idx) * 10) : 0
-  const jitterY = idx >= baseOffsets.length ? (Math.cos(idx) * 10) : 0
-  
-  const delay = (idx * 0.8) + 's'
-  const duration = (4 + (idx % 2)) + 's'
-  
-  return {
-    top: `calc(${offset.top} + ${jitterY}px)`,
-    left: `calc(${offset.left} + ${jitterX}px)`,
-    animationDelay: delay,
-    animationDuration: duration,
-    zIndex: 100 - idx
   }
 }
 
@@ -707,8 +740,16 @@ async function onSend(systemMsg = null) {
     }
     
     const baseReq = reqForApi
+    const chatOpts = { 
+      topP: topP.value, 
+      frequencyPenalty: frequencyPenalty.value, 
+      presencePenalty: presencePenalty.value,
+      source: 'mobile',
+      session_id: sessionId.value
+    }
+
     if (stream.value) {
-      const final = await chatStream(baseReq, modelName.value, temperature.value, apiBase.value, { topP: topP.value, frequencyPenalty: frequencyPenalty.value, presencePenalty: presencePenalty.value }, (_, full) => {
+      const final = await chatStream(baseReq, modelName.value, temperature.value, apiBase.value, chatOpts, (_, full) => {
         messages.value.splice(idx, 1, { role: 'assistant', content: String(full || '') })
         scrollToBottom() // 流式更新时持续滚动到底部
       })
@@ -722,7 +763,7 @@ async function onSend(systemMsg = null) {
       persistMessages()
       scrollToBottom() // 最终消息更新后滚动到底部
     } else {
-      const r = await chatApi(baseReq, modelName.value, temperature.value, apiBase.value, { topP: topP.value, frequencyPenalty: frequencyPenalty.value, presencePenalty: presencePenalty.value })
+      const r = await chatApi(baseReq, modelName.value, temperature.value, apiBase.value, chatOpts)
       messages.value.splice(idx, 1, { role: 'assistant', content: String(r?.content || '') || '（暂无内容）', timestamp: messages.value[idx].timestamp })
       parsePeroStatus(String(r?.content || ''))
       await parseAndSaveMemory(String(r?.content || ''), messages.value[idx].timestamp)
@@ -942,9 +983,17 @@ async function regenerateAt(idx) {
       }
     }
     
+    const chatOpts = { 
+      topP: topP.value, 
+      frequencyPenalty: frequencyPenalty.value, 
+      presencePenalty: presencePenalty.value,
+      source: 'mobile',
+      session_id: sessionId.value
+    }
+
     try {
       if (stream.value) {
-        const final = await chatStream(baseReq, modelName.value, temperature.value, apiBase.value, { topP: topP.value, frequencyPenalty: frequencyPenalty.value, presencePenalty: presencePenalty.value }, (_, full) => {
+        const final = await chatStream(baseReq, modelName.value, temperature.value, apiBase.value, chatOpts, (_, full) => {
           messages.value.splice(idx, 1, { role: 'assistant', content: String(full || ''), timestamp: originalTimestamp })
           scrollToBottom() // 流式更新时持续滚动到底部
         })
@@ -958,7 +1007,7 @@ async function regenerateAt(idx) {
         persistMessages()
         scrollToBottom() // 最终消息更新后滚动到底部
       } else {
-        const r = await chatApi(baseReq, modelName.value, temperature.value, apiBase.value, { topP: topP.value, frequencyPenalty: frequencyPenalty.value, presencePenalty: presencePenalty.value })
+        const r = await chatApi(baseReq, modelName.value, temperature.value, apiBase.value, chatOpts)
         messages.value.splice(idx, 1, { role: 'assistant', content: String(r?.content || '') || '（暂无内容）', timestamp: originalTimestamp })
         parsePeroStatus(String(r?.content || ''))
         await parseAndSaveMemory(String(r?.content || ''), originalTimestamp)
@@ -1008,6 +1057,30 @@ onMounted(() => {
   }
   // 组件挂载后滚动到底部
   setTimeout(scrollToBottom, 300)
+
+  // 如果启用了远程服务器，尝试同步最近的历史记录
+  const remoteUrl = lsGet('ppc.remoteEnabled', false) === true ? lsGet('ppc.remoteUrl', '') : null
+  if (remoteUrl && sessionId.value) {
+    console.log('正在从远程服务器同步历史记录...')
+    fetch(`${remoteUrl.replace(/\/$/, '')}/api/history/mobile/${sessionId.value}`)
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          // 这里的策略是：如果本地没消息，或者远程消息更多，则使用远程的
+          // 或者简单的合并？这里先采用“如果本地为空则同步”的保守策略，避免覆盖用户当前的本地对话
+          if (messages.value.length === 0) {
+            messages.value = data.map(m => ({
+              role: m.role,
+              content: m.content,
+              timestamp: m.timestamp ? new Date(m.timestamp).getTime() : Date.now()
+            }))
+            persistMessages()
+            scrollToBottom()
+          }
+        }
+      })
+      .catch(err => console.warn('同步历史记录失败:', err))
+  }
 })
 </script>
 
@@ -1105,13 +1178,17 @@ onMounted(() => {
   z-index: 10;
 }
 
-.topic-bubble {
+/* 聚合话题气泡样式 */
+.topic-aggregate-bubble {
   position: absolute;
+  top: 10px;
+  left: 10px;
   pointer-events: auto;
-  background: rgba(255, 255, 255, 0.25); /* 秘密态更透明 */
+  background: rgba(255, 255, 255, 0.25);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1.5px solid rgba(255, 255, 255, 0.4);
-  border-radius: 50%; /* 秘密态是圆形的 */
+  border-radius: 50%;
   width: 60px;
   height: 60px;
   display: flex;
@@ -1121,19 +1198,39 @@ onMounted(() => {
   box-shadow: 0 4px 15px rgba(59, 130, 246, 0.15);
   cursor: pointer;
   animation: topicBubbleFloat 5s ease-in-out infinite;
-  transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 90;
 }
 
-.topic-bubble.is-revealed {
-  border-radius: 24px 24px 24px 4px;
-  width: auto;
-  height: auto;
-  min-width: 80px;
-  max-width: 130px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.5);
-  aspect-ratio: auto;
+.topic-aggregate-bubble:active {
+  transform: scale(0.95);
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.topic-aggregate-bubble .bubble-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+}
+
+.topic-aggregate-bubble .badge {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: #ff4757;
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  transform: translate(20%, 20%);
 }
 
 .secret-icon {
@@ -1151,28 +1248,99 @@ onMounted(() => {
   text-align: center;
 }
 
-.topic-text.revealed {
-  font-size: 13px;
-  font-weight: bold;
+/* 话题列表子页面样式 */
+.topic-list-card {
+  max-height: 80vh;
 }
 
-.bubble-actions {
-  margin-top: 6px;
-  width: 100%;
+.topic-list-content {
+  flex: 1;
+  overflow-y: auto;
   display: flex;
-  justify-content: flex-end;
-  border-top: 1px solid rgba(59, 130, 246, 0.1);
-  padding-top: 4px;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px;
 }
 
-.remove-icon {
+.topic-item {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 12px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.topic-item:active {
+  transform: scale(0.98);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.topic-item.is-revealed {
+  background: rgba(64, 158, 255, 0.15);
+  border-color: rgba(64, 158, 255, 0.3);
+}
+
+.topic-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.topic-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topic-info .secret-icon {
+  font-size: 14px;
+  margin-bottom: 0;
+}
+
+.topic-info .time-tag {
   font-size: 12px;
-  color: rgba(59, 130, 246, 0.5);
-  transition: color 0.3s;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
-.remove-icon:hover {
-  color: #ef4444;
+.topic-body {
+  font-size: 15px;
+  line-height: 1.4;
+  color: #fff;
+}
+
+.topic-body .blur-text {
+  filter: blur(4px);
+  opacity: 0.7;
+  transition: all 0.3s ease;
+}
+
+.topic-item:hover .blur-text {
+  filter: blur(2px);
+}
+
+.topic-item .delete-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.4);
+  padding: 4px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.topic-item .delete-btn:active {
+  color: #ff4757;
+  background: rgba(255, 71, 87, 0.1);
 }
 
 @keyframes topicBubbleFloat {

@@ -2,10 +2,10 @@ import Dexie from 'dexie'
 
 export const db = new Dexie('PeroperoChatDB')
 
-db.version(2).stores({
-  conversations: '++id, timestamp',
+db.version(3).stores({
+  conversations: '++id, timestamp, source, session_id',
   settings: 'key',
-  memories: '++id, *tags, importance, timestamp, msgTimestamp'
+  memories: '++id, *tags, importance, timestamp, msgTimestamp, type, source'
 })
 
 // Initialize default settings if not exists

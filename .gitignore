@@ -43,5 +43,6 @@ tmp/
 **/.svelte-kit/
 **/.angular/cache
 **/coverage/
+PeroCore/
 Peroperochat/backend/app/data/*.db
 **/app/data/*.db

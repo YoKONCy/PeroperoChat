@@ -32,6 +32,26 @@
         <div class="api-actions"><el-button type="primary" @click="applySettings">确定</el-button></div>
         </div>
       </el-tab-pane>
+      <el-tab-pane label="远程连接" name="remote">
+        <div class="api-box">
+          <div class="tip-box">
+            <el-icon><Connection /></el-icon>
+            <p>连接到 PC 集成版或私有云服务器，实现多端记忆共享和更强大的 AI 能力。</p>
+          </div>
+          <el-form label-width="120px" style="margin-top: 20px">
+            <el-form-item label="启用远程模式">
+              <el-switch v-model="remoteEnabled" active-text="开启" inactive-text="关闭" />
+            </el-form-item>
+            <el-form-item label="服务器地址">
+              <el-input v-model="remoteUrl" placeholder="例如: http://192.168.1.5:3000" :disabled="!remoteEnabled" />
+              <div class="sub-tip">请输入 PeroDesktop 或 PeroServer 的地址</div>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="applyRemoteSettings" :disabled="!remoteEnabled">保存并连接</el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-tab-pane>
       <el-tab-pane label="模型设置" name="model">
         <el-form label-width="160px">
           <el-form-item label="Temperature"><el-input-number v-model="temperature" :min="0" :max="2" :step="0.01" /></el-form-item>
@@ -138,7 +158,7 @@ import axios from 'axios'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { getDefaultPrompts, resetAll } from '../api'
 import { db } from '../db'
-import { Search, Delete, InfoFilled } from '@element-plus/icons-vue'
+import { Search, Delete, InfoFilled, Connection } from '@element-plus/icons-vue'
 
 const tab = ref('api')
 const modelName = ref('请先获取模型')
@@ -160,6 +180,9 @@ const stream = ref(false)
 const memoryRounds = ref(40)
 const memorySearch = ref('')
 const allMemories = ref([])
+
+const remoteEnabled = ref(false)
+const remoteUrl = ref('')
 
 const router = useRouter()
 function goHome() { router.push('/') }
@@ -208,14 +231,27 @@ watch(tab, (newTab) => {
   }
 })
 
-function lsGet(key, fallback) { try { const v = localStorage.getItem(key); if (v===null||v===undefined) return fallback; try { return JSON.parse(v) } catch(_) { return v } } catch(_) { return fallback } }
-function lsSet(key, value) { try { const v = typeof value === 'string' ? value : JSON.stringify(value); localStorage.setItem(key, v) } catch(_) {} }
+// localStorage 辅助函数
+function lsGet(k, def) {
+  const v = localStorage.getItem(k)
+  return v === null ? def : v
+}
+function lsSet(k, v) {
+  if (typeof v === 'object') v = JSON.stringify(v)
+  localStorage.setItem(k, v)
+}
 
 function applySettings() {
-  lsSet('ppc.apiBase', String(apiBase.value || ''))
-  lsSet('ppc.apiKey', String(apiKey.value || ''))
-  lsSet('ppc.modelName', String(modelName.value || ''))
-  ElMessage.success('已保存')
+  lsSet('ppc.modelName', modelName.value)
+  lsSet('ppc.apiBase', apiBase.value)
+  lsSet('ppc.apiKey', apiKey.value)
+  ElMessage.success('API配置已保存')
+}
+
+function applyRemoteSettings() {
+  localStorage.setItem('ppc.remoteEnabled', String(remoteEnabled.value))
+  localStorage.setItem('ppc.remoteUrl', remoteUrl.value.trim())
+  ElMessage.success('远程连接设置已保存')
 }
 
 function applyModelSettings() {
@@ -271,9 +307,10 @@ async function handleResetAll() {
 
 async function fetchModels() {
   try {
-    const base = (apiBase.value || 'https://api.openai.com').replace(/\/$/, '')
+    const base = (apiBase.value || 'https://api.openai.com').trim().replace(/\/$/, '')
     const headers = apiKey.value ? { Authorization: `Bearer ${apiKey.value}` } : {}
-    const r = await axios.get(`${base}/v1/models`, { headers })
+    const url = base.endsWith('/v1') ? `${base}/models` : `${base}/v1/models`
+    const r = await axios.get(url, { headers })
     availableModels.value = Array.isArray(r.data?.data) ? r.data.data : []
   } catch (e) {
     availableModels.value = []
@@ -285,6 +322,9 @@ async function fetchModels() {
 onMounted(async () => {
   const base = String(lsGet('ppc.apiBase', apiBase.value) || '').trim()
   const key = String(lsGet('ppc.apiKey', '') || '')
+
+  remoteEnabled.value = !!lsGet('ppc.remoteEnabled', false)
+  remoteUrl.value = String(lsGet('ppc.remoteUrl', '') || '')
   const model = String(lsGet('ppc.modelName', modelName.value) || '')
   const ms = lsGet('ppc.modelSettings', null)
   if (base) apiBase.value = base
