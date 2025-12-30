@@ -762,6 +762,38 @@ async function deleteMessageAt(idx) {
 
     // 收集要删除的时间戳，用于同步删除记忆
     const toDeleteTimestamps = indicesToDelete.map(i => messages.value[i].timestamp).filter(Boolean)
+
+    // 修复 Bug：同步清理已触发但尚未手动删除的提醒和话题
+    indicesToDelete.forEach(i => {
+      const msg = messages.value[i]
+      if (msg.role === 'assistant') {
+        // 检查并清理 Reminder
+        const reminderRegex = /<REMINDER>([\s\S]*?)<\/REMINDER>/g
+        let rMatch
+        while ((rMatch = reminderRegex.exec(msg.content)) !== null) {
+          try {
+            const data = JSON.parse(rMatch[1].trim())
+            const rIdx = reminders.value.findIndex(r => r.time === data.time && r.task === data.task)
+            if (rIdx !== -1) {
+              deleteReminder(rIdx) // 使用现有的带通知取消逻辑的函数
+            }
+          } catch (e) {}
+        }
+        
+        // 检查并清理 Topic
+        const topicRegex = /<TOPIC>([\s\S]*?)<\/TOPIC>/g
+        let tMatch
+        while ((tMatch = topicRegex.exec(msg.content)) !== null) {
+          try {
+            const data = JSON.parse(tMatch[1].trim())
+            const tIdx = topics.value.findIndex(t => t.time === data.time && t.topic === data.topic)
+            if (tIdx !== -1) {
+              deleteTopic(tIdx) // 使用现有的带通知取消逻辑的函数
+            }
+          } catch (e) {}
+        }
+      }
+    })
     
     // 执行删除：由于是按需删除，我们使用 filter 重新构建数组，而不是 splice 级联
     messages.value = messages.value.filter((_, i) => !indicesToDelete.includes(i))
