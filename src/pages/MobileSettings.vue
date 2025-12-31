@@ -286,23 +286,37 @@ async function resetPromptsToDefault() {
 
 async function handleResetAll() {
   try {
-    await ElMessageBox.confirm(
-      '此操作将永久删除所有对话记录、记忆条目及个人设置。您确定要继续吗？',
+    const { value, action } = await ElMessageBox.prompt(
+      '<div class="danger-main-text">主人，真的要让 Pero 忘掉你吗？o(╥﹏╥)o</div>' +
+      '<div class="danger-sub-text">（此操作将清空所有数据，如需继续，请在文本框中输入“我们还会再见的...”）</div>',
       '极其危险的操作',
       {
-        confirmButtonText: '确定重置',
-        cancelButtonText: '点错了',
+        inputValue: '',
+        inputPlaceholder: '请输入：我们还会再见的...',
+        confirmButtonText: '继续',
+        cancelButtonText: '取消',
         type: 'error',
-        confirmButtonClass: 'el-button--danger'
+        customClass: 'danger-reset-box',
+        center: true,
+        dangerouslyUseHTMLString: true,
       }
     )
     
-    await resetAll()
-    ElMessage.success('所有数据已清除，正在重新加载...')
-    setTimeout(() => {
-      window.location.href = '/'
-    }, 1500)
-  } catch (_) {}
+    if (action === 'confirm') {
+      if (String(value || '').trim() !== '我们还会再见的...') {
+        ElMessage.error('输入不匹配，已取消')
+        return
+      }
+      
+      await resetAll()
+      ElMessage.success('所有数据已清除，正在重新加载...')
+      setTimeout(() => {
+        window.location.href = '/'
+      }, 1500)
+    }
+  } catch (_) {
+    // 用户取消操作
+  }
 }
 
 async function fetchModels() {
@@ -575,4 +589,67 @@ onMounted(async () => {
   .settings-card { padding: 16px; border-radius: 20px; height: calc(100vh - 100px); }
   .settings-header .title { font-size: 20px; }
 }
+/* 记忆重置弹窗美化 */
+:deep(.danger-reset-box) {
+  animation: dangerShake 0.6s cubic-bezier(.175,.885,.32,1.275) 2 both;
+  border-radius: 20px !important;
+  border: 1px solid rgba(248,113,113,0.3) !important;
+  box-shadow: 0 20px 50px rgba(244,63,94,0.15) !important;
+  background: white !important;
+}
+
+:deep(.danger-reset-box .el-message-box__header) {
+  padding-top: 24px;
+}
+
+:deep(.danger-reset-box .el-message-box__title) {
+  color: #ef4444;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+:deep(.danger-reset-box .danger-main-text) {
+  font-weight: 600;
+  font-size: 16px;
+  color: #1e293b;
+  margin-bottom: 8px;
+}
+
+:deep(.danger-reset-box .danger-sub-text) {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+:deep(.danger-reset-box .el-message-box__input) {
+  padding-top: 15px;
+}
+
+:deep(.danger-reset-box .el-input__wrapper) {
+  border-radius: 12px;
+  background: #f8fafc;
+  box-shadow: none !important;
+  border: 1px solid #e2e8f0;
+}
+
+:deep(.danger-reset-box .el-button--primary) {
+  background: #ef4444;
+  border-color: #ef4444;
+  border-radius: 10px;
+  padding: 10px 20px;
+}
+
+:deep(.danger-reset-box .el-button:not(.el-button--primary)) {
+  border-radius: 10px;
+  padding: 10px 20px;
+}
+
+@keyframes dangerShake {
+  0%, 100% { transform: translate3d(0,0,0) }
+  20% { transform: translate3d(-4px, 0, 0) }
+  40% { transform: translate3d(4px, 0, 0) }
+  60% { transform: translate3d(-3px, 0, 0) }
+  80% { transform: translate3d(3px, 0, 0) }
+}
+
 </style>
